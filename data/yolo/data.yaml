@@ -1,0 +1,8 @@
+path: C:/MCA Main Project/Smart-Flow/data/yolo
+train: images/train
+val: images/val
+test: images/test
+
+names:
+  0: house
+  1: obstacle
