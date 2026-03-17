@@ -6,6 +6,8 @@ from pathlib import Path
 from datetime import datetime
 from typing import List, Tuple, Dict
 import pandas as pd
+import math
+import cv2
 
 import streamlit as st
 from PIL import Image, ImageDraw
@@ -122,25 +124,73 @@ def overlay_paths(
     return img
 
 
+
 def overlay_best_path(
-    base_img: Image.Image,
-    path_cells: List[Tuple[int, int]],
-    cell_size: int,
-) -> Image.Image:
+    base_img,
+    path_cells,
+    cell_size,
+    house_count,
+    obstacle_count,
+    show_summary=True
+):
     img = base_img.copy()
     draw = ImageDraw.Draw(img)
 
     if not path_cells:
         return img
 
+    # Convert path to pixel points
     pts = [cell_to_pixel_center(r, c, cell_size) for (r, c) in path_cells]
+
+    # Draw main route
     if len(pts) >= 2:
         draw.line(pts, fill=(0, 255, 0), width=5)
 
+        # 🔹 Add arrows only on best route
+        arrow_spacing = 20
+        arrow_size = 8
+
+        for i in range(0, len(pts) - 1, arrow_spacing):
+            x1, y1 = pts[i]
+            x2, y2 = pts[i + 1]
+
+            dx = x2 - x1
+            dy = y2 - y1
+            length = math.hypot(dx, dy)
+
+            if length == 0:
+                continue
+
+            ux = dx / length
+            uy = dy / length
+
+            tip = (x2, y2)
+            left = (
+                x2 - arrow_size * ux + (arrow_size / 2) * uy,
+                y2 - arrow_size * uy - (arrow_size / 2) * ux,
+            )
+            right = (
+                x2 - arrow_size * ux - (arrow_size / 2) * uy,
+                y2 - arrow_size * uy + (arrow_size / 2) * ux,
+            )
+
+            draw.polygon([tip, left, right], fill=(0, 0, 0))  # black arrows
+
+    # Start & End points
     sx, sy = pts[0]
     ex, ey = pts[-1]
     draw.ellipse([sx - 7, sy - 7, sx + 7, sy + 7], fill=(0, 255, 0))
     draw.ellipse([ex - 7, ey - 7, ex + 7, ey + 7], fill=(255, 255, 0))
+
+    # 🔹 SUMMARY BOX (BLACK TEXT ONLY)
+    if show_summary:
+        draw.rectangle([20, 20, 300, 110], fill=(255, 255, 255))
+        draw.rectangle([20, 20, 300, 110], outline=(0, 0, 0), width=2)
+
+        draw.text((30, 30), f"Houses: {house_count}", fill=(0, 0, 0))
+        draw.text((30, 55), f"Obstacles: {obstacle_count}", fill=(0, 0, 0))
+        draw.text((30, 80), f"Length: {len(path_cells)} m", fill=(0, 0, 0))
+
     return img
 
 
@@ -383,9 +433,18 @@ if routing_mode == "Single House":
 
     all_routes_img = overlay_paths(base_with_source, alt_paths, grid_res.cell_size, width=3)
 
-    best_path = alt_paths[0]
-    best_routes_img = overlay_best_path(base_with_source, best_path, grid_res.cell_size)
 
+    best_path = alt_paths[0]
+    house_count = len(detections["houses"])
+    obstacle_count = len(detections["obstacles"])
+    best_routes_img = overlay_best_path(
+    base_with_source,
+    best_path,
+    grid_res.cell_size,
+    house_count,
+    obstacle_count,
+    show_summary=True
+)
     score = fuzzy_score(best_path, grid_res.grid)
     metrics_rows.append(
         {
@@ -454,12 +513,26 @@ else:
             }
         )
 
-    if not best_paths:
-        st.error(" No paths found for selected houses. Try another source or reduce obstacle padding.")
-        st.stop()
+        if not best_paths:
+            st.error(" No paths found for selected houses. Try another source or reduce obstacle padding.")
+            st.stop()
 
-    all_routes_img = overlay_paths(base_with_source, all_paths_flat, grid_res.cell_size, width=2)
-    best_routes_img = overlay_paths(base_with_source, best_paths, grid_res.cell_size, width=5)
+        all_routes_img = overlay_paths(base_with_source, all_paths_flat, grid_res.cell_size, width=2)
+
+        house_count = len(detections["houses"])
+        obstacle_count = len(detections["obstacles"])
+
+        best_routes_img = base_with_source.copy()
+
+        for i, path in enumerate(best_paths):
+            best_routes_img = overlay_best_path(
+                best_routes_img,
+                path,
+                grid_res.cell_size,
+                house_count,
+                obstacle_count,
+                show_summary=(i == 0)
+            )
 
     st.subheader(" All Routes (Multiple Houses)")
     st.image(all_routes_img, use_container_width=True)
