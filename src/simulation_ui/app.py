@@ -5,6 +5,7 @@ import sys
 from pathlib import Path
 from datetime import datetime
 from typing import List, Tuple, Dict
+import pandas as pd
 
 import streamlit as st
 from PIL import Image, ImageDraw
@@ -248,8 +249,9 @@ small, .stCaption {color: #9aa0a6;}
     unsafe_allow_html=True,
 )
 
-st.title("Smart-Flow: Hydraulic Network Simulation Tool")
-st.caption("Upload blueprint → AI detection → Graph routing (A*) → Fuzzy evaluation → Export results")
+st.title("Smart-Flow")
+st.subheader("Explainable Hydraulic Network Simulation Tool")
+st.caption("Upload blueprint, detect houses and obstacles, generate routes, evaluate the best route, and export results.")
 
 st.markdown(
     "<div class='card'>"
@@ -267,7 +269,8 @@ st.markdown(
 with st.sidebar:
     st.header("⚙️ Settings")
 
-    model_path_str = st.text_input("YOLO Model Path", value=str(default_model_path()), key="yolo_model_path")
+    model_path_str = str(default_model_path())
+    st.sidebar.text_input("Model File", value="best.pt", disabled=True)
 
     conf = st.slider("Detection Confidence", 0.05, 0.95, 0.25, 0.05, key="conf_slider")
 
@@ -301,7 +304,7 @@ def cached_model(path_str: str):
     return load_yolo(path_str)
 
 if not Path(model_path_str).exists():
-    st.error(f"❌ Model not found at:\n{model_path_str}")
+    st.error(f" Model not found at:\n{model_path_str}")
     st.stop()
 
 model = cached_model(model_path_str)
@@ -309,12 +312,12 @@ model = cached_model(model_path_str)
 col1, col2 = st.columns(2, gap="large")
 
 with col1:
-    st.subheader(" Input Blueprint")
+    st.subheader(" Uploaded Blueprint")
     st.image(pil_img, use_container_width=True)
     st.markdown(f"<div class='card'><b>Resolution:</b> {img_w} × {img_h}</div>", unsafe_allow_html=True)
 
 with col2:
-    st.subheader("✅ Detection Output")
+    st.subheader("Detected Houses & Obstacles")
     det_res = detect_objects(model, pil_img, conf=conf)
     detections = det_res.detections
     det_img = det_res.annotated
@@ -342,7 +345,7 @@ st.download_button(
 )
 
 st.divider()
-st.header("Routing")
+st.header("Route Generation")
 
 if len(detections.get("houses", [])) == 0:
     st.warning("No houses detected. Try lowering confidence or upload another map.")
@@ -388,7 +391,7 @@ if routing_mode == "Single House":
     alt_paths = k_alternative_paths(grid_res.grid, start_cell, goal_cell, k=int(k_routes), penalty_step=2.0, spread_radius=2)
 
     if not alt_paths:
-        st.error("❌ No path found. Try changing source or reduce obstacle padding.")
+        st.error(" No path found. Try changing source or reduce obstacle padding.")
         st.stop()
 
     all_routes_img = overlay_paths(base_with_source, alt_paths, grid_res.cell_size, width=3)
@@ -408,14 +411,22 @@ if routing_mode == "Single House":
         }
     )
 
-    st.subheader("🟠 All Routes (Single House)")
+    st.subheader(" All Routes (Single House)")
     st.image(all_routes_img, use_container_width=True)
 
-    st.subheader("🟢 Best Route (Single House)")
+    st.subheader(" Best Route (Single House)")
     st.image(best_routes_img, use_container_width=True)
 
-    st.subheader("Explainable Evaluation (Best Route)")
-    st.markdown(f"<div class='card'>{score.get('explanation','')}</div>", unsafe_allow_html=True)
+    st.subheader("Best Route Explanation")
+    st.markdown(
+    f"""
+    <div class='card'>
+    <b>Fuzzy Evaluation Summary</b><br><br>
+    {score.get('explanation','')}
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
 
 else:
     max_show = min(len(detections["houses"]), 200)
@@ -468,16 +479,16 @@ else:
         )
 
     if not best_paths:
-        st.error("❌ No paths found for selected houses. Try another source or reduce obstacle padding.")
+        st.error(" No paths found for selected houses. Try another source or reduce obstacle padding.")
         st.stop()
 
     all_routes_img = overlay_paths(base_with_source, all_paths_flat, grid_res.cell_size, width=2)
     best_routes_img = overlay_paths(base_with_source, best_paths, grid_res.cell_size, width=5)
 
-    st.subheader("🟠 All Routes (Multiple Houses)")
+    st.subheader(" All Routes (Multiple Houses)")
     st.image(all_routes_img, use_container_width=True)
 
-    st.subheader("🟢 Best Routes (Multiple Houses)")
+    st.subheader(" Best Routes (Multiple Houses)")
     st.image(best_routes_img, use_container_width=True)
 
 
@@ -504,11 +515,20 @@ with c2:
         key="download_best_routes_btn",
     )
 
-st.subheader("Evaluation Table (Best Route per House)")
-st.dataframe(metrics_rows, use_container_width=True)
+st.subheader("Route Evaluation Summary")
+df = pd.DataFrame(metrics_rows)
+df = df.rename(columns={
+    "house": "House No",
+    "path_cells": "Path Length",
+    "risk_cells": "Risk Cells",
+    "cost": "Cost Score",
+    "pressure": "Pressure Efficiency",
+    "safety": "Safety Score"
+})
+st.dataframe(df, use_container_width=True)
 
 st.divider()
-st.header("📄 Export PDF Report")
+st.header("Export Results")
 
 meta = {
     "Model": Path(model_path_str).name,
@@ -537,3 +557,6 @@ st.download_button(
     mime="application/pdf",
     key="download_pdf_btn",
 )
+
+st.markdown("---")
+st.caption("Smart-Flow | AI-based pipeline routing and fuzzy evaluation system for hydraulic network planning.")
