@@ -253,19 +253,6 @@ st.title("Smart-Flow")
 st.subheader("Explainable Hydraulic Network Simulation Tool")
 st.caption("Upload blueprint, detect houses and obstacles, generate routes, evaluate the best route, and export results.")
 
-st.markdown(
-    "<div class='card'>"
-    "<b>Hint (how to read the table):</b><br>"
-    "• <b>PathCells</b> = route length in grid steps (smaller usually better).<br>"
-    "• <b>RiskCells</b> = how many route cells are close to obstacles (smaller is safer).<br>"
-    "• <b>Cost</b> ranges 0→1: <b>lower cost = better route</b> (closer to 1 means expensive/unsafe).<br>"
-    "• <b>Pressure</b> (0→1): higher means better pressure efficiency (shorter route).<br>"
-    "• <b>Safety</b> (0→1): higher means route stays away from obstacles.<br>"
-    "<br><b>Cost formula:</b> cost = 0.6*(path_cells/600) + 0.4*(risk_cells/path_cells)"
-    "</div>",
-    unsafe_allow_html=True,
-)
-
 with st.sidebar:
     st.header("⚙️ Settings")
 
@@ -417,17 +404,6 @@ if routing_mode == "Single House":
     st.subheader(" Best Route (Single House)")
     st.image(best_routes_img, use_container_width=True)
 
-    st.subheader("Best Route Explanation")
-    st.markdown(
-    f"""
-    <div class='card'>
-    <b>Fuzzy Evaluation Summary</b><br><br>
-    {score.get('explanation','')}
-    </div>
-    """,
-    unsafe_allow_html=True,
-)
-
 else:
     max_show = min(len(detections["houses"]), 200)
     selected = st.multiselect(
@@ -515,7 +491,7 @@ with c2:
         key="download_best_routes_btn",
     )
 
-st.subheader("Route Evaluation Summary")
+st.subheader("Detailed Metrics")
 df = pd.DataFrame(metrics_rows)
 df = df.rename(columns={
     "house": "House No",
